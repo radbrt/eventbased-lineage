@@ -1,4 +1,4 @@
-# Event-based lineage
+# Event-based lineage with Prefect
 
 #### ⚠️ This is a thinking-out-loud type of project ⚠️
 no code here is ready for anything, but is intended to provide some proof-of-concepts and ideas.
