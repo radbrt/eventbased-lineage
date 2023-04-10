@@ -23,10 +23,12 @@ def get_n2_count(df):
 @flow
 def main_flow():
     sf = SnowflakeLineageBlock.load('ax')
+    sf.freeze_flow_info()
     df = get_some_data_from_table(lineageblock=sf)
     df = get_n2_count(df)
     sf.write_df(df, "n2koder")
     
+    sf.complete_run()
 
 
 if __name__ == "__main__":

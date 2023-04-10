@@ -8,7 +8,9 @@ from sqlparse.sql import IdentifierList, Identifier
 from sqlparse.tokens import Keyword, DML
 from pydantic import SecretBytes, SecretStr
 from typing import Optional, Union
-
+import json
+import requests
+import datetime
 
 
 class SnowflakeLineageBlock(Block):
@@ -21,27 +23,38 @@ class SnowflakeLineageBlock(Block):
     password: str
     warehouse: str
     role: str
-    flow_name: Optional[str] = None
+    marquez_endpoint: Optional[str] = None
 
     _block_type_name = "SnowflakeLineage"
     _block_type_slug = "snowflake-lineage"
 
+    def freeze_flow_info(self):
+        self._flow_run_name = str(prefect.context.get_run_context().flow_run.name) or prefect.context.get_run_context().flow_run.flow_id
+        self._flow_run_id = str(prefect.context.get_run_context().flow_run.id)
+        self._flow_id = prefect.context.get_run_context().flow_run.flow_id
 
     @property
-    def flow_id(self):
+    def flow_run_id(self):
         try:
-            return str(prefect.context.get_run_context().flow_run.id)
+            return self._flow_run_id  or str(prefect.context.get_run_context().flow_run.id)
         except AttributeError as e:
             return str(prefect.context.get_run_context().task_run.flow_run_id)
 
-
     @property
-    def flow_name(self):
+    def flow_run_name(self):
         try:
-            return str(prefect.context.get_run_context().flow_run.name)
+            return self._flow_run_name or str(prefect.context.get_run_context().flow_run.name)
         except Exception as e:
             return None
 
+    @property
+    def flow_id(self):
+        return self._flow_id or prefect.context.get_run_context().flow_run.flow_id
+
+
+    @property
+    def default_namespace(self):
+        return f"snowflake://{self.account}/{self.database}/{self.db_schema}"
 
     @property
     def connection_string(self):
@@ -107,7 +120,10 @@ class SnowflakeLineageBlock(Block):
         with engine.connect() as connection:
             result = connection.execute(query)
             lineage_event = self.make_lineage_event(query)
-            print(lineage_event)
+            print(json.dumps(lineage_event, ensure_ascii=True, default=str))
+
+            if self.marquez_endpoint:
+                self.post_to_marquez(lineage_event)
 
             return [dict(row) for row in result]
 
@@ -120,7 +136,9 @@ class SnowflakeLineageBlock(Block):
         df.to_sql(table_name, con=engine, if_exists='replace', index=False)
 
         lineage_event = self.make_lineage_event(f"CREATE TABLE {table_name}  AS (SELECT 1 AS dummy)")
-        print(lineage_event)
+        print(json.dumps(lineage_event, ensure_ascii=True, default=str))
+        if self.marquez_endpoint:
+            self.post_to_marquez(lineage_event)
 
 
     def get_df_from_query(self, query):
@@ -131,7 +149,10 @@ class SnowflakeLineageBlock(Block):
         df = pd.read_sql(query, con=engine)
 
         lineage_event = self.make_lineage_event(query)
-        print(lineage_event)
+        print(json.dumps(lineage_event, ensure_ascii=True, default=str))
+
+        if self.marquez_endpoint:
+            self.post_to_marquez(lineage_event)
 
         return df
 
@@ -163,22 +184,53 @@ class SnowflakeLineageBlock(Block):
         full_queried_table_references = [self.get_full_tablereference(table) for table in tables_queried]
         full_created_table_references = [self.get_full_tablereference(table) for table in tables_created]
 
-        event_record = {
-            "flow_run_name": self.flow_name,
-            "flow_run_id": self.flow_id,
+        marquez_event = {
+            "eventType": "RUNNING",
+            "eventTime": prefect.context.get_run_context().start_time,
+            "job": {
+                "namespace": "prefect",
+                "name": self.flow_id
+            },
+            "run": {
+                "runId": self.flow_run_id
+            },
             "inputs": [],
             "outputs": [],
+            "producer": "https://prefect.io"
         }
 
+
         for table in tables_created:
-            schema = self.get_table_schema(table)
-            event_record["outputs"].append({"table": table, "schema": schema})
+            schema_fields = self.get_table_schema(table)
+            output_record = {
+                "namespace": "prefect",
+                "name": f"{self.default_namespace}/{table}",
+                "facets": {
+                    "schema": {
+                        "fields": schema_fields,
+                        "_producer": "prefect",
+                        "_schemaURL": "https://example.com"
+                    }
+                }
+            }
+            marquez_event["outputs"].append(output_record)
 
         for table in tables_queried:
-            schema = self.get_table_schema(table)
-            event_record["inputs"].append({"table": table, "schema": schema})
+            schema_fields = self.get_table_schema(table)
+            input_record = {
+                "namespace": "prefect",
+                "name": f"{self.default_namespace}/{table}",
+                "facets": {
+                    "schema": {
+                        "fields": schema_fields,
+                        "_producer": "prefect",
+                        "_schemaURL": "https://example.com"
+                    }
+                }
+            }
+            marquez_event["inputs"].append(input_record)
 
-        return event_record
+        return marquez_event
 
 
     def parse_full_table_name(self, full_table_name: str) -> tuple[str | None, str | None, str]:
@@ -214,5 +266,33 @@ class SnowflakeLineageBlock(Block):
 
         engine = create_engine(self.connection_string)
         result = engine.execute(query)
+        return [{"name": row["name"], "type": row["type"]} for row in result]
 
-        return [dict(row) for row in result]
+    def post_to_marquez(self, data):
+        headers = {'Content-type': 'application/json'}
+        sendable_data = json.loads(json.dumps(data, ensure_ascii=True, default=str))
+        r = requests.post(self.marquez_endpoint, json=sendable_data, headers=headers)
+
+        if not r.ok:
+            raise Exception(f"Error posting to OpenLineage: {r.status_code}, {r.text}")
+
+    def complete_run(self):
+        """Mark the run as complete"""
+        marquez_event = {
+            "eventType": "COMPLETE",
+            "eventTime": datetime.datetime.now().isoformat(),
+            "job": {
+                "namespace": "prefect",
+                "name": self.flow_id
+            },
+            "run": {
+                "runId": self.flow_run_id
+            },
+            "inputs": [],
+            "outputs": [],
+            "producer": "https://prefect.io"
+        }
+
+        print(json.dumps(marquez_event, ensure_ascii=True, default=str))
+        if self.marquez_endpoint:
+            self.post_to_marquez(marquez_event)

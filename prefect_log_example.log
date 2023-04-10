@@ -1,0 +1,12 @@
+(py_jottings)  radbrt@laptop  ~/projects/eventbased-lineage   main ±  python flow.py 
+15:44:21.039 | INFO    | prefect.engine - Created flow run 'bouncy-hound' for flow 'main-flow'
+15:44:24.417 | INFO    | Flow run 'bouncy-hound' - Created task run 'get_some_data_from_table-0' for task 'get_some_data_from_table'
+15:44:24.417 | INFO    | Flow run 'bouncy-hound' - Executing 'get_some_data_from_table-0' immediately...
+{"eventType": "RUNNING", "eventTime": "2023-04-10T13:44:25.546776+00:00", "job": {"namespace": "prefect", "name": "321c07ff-8295-4a0a-b916-64dba93aae04"}, "run": {"runId": "1b1e18a8-4f4e-4737-9c70-b2dfe9e66d90"}, "inputs": [{"namespace": "prefect", "name": "snowflake://xy1234.west-europe.azure/dbthouse/landing/nkoder", "facets": {"schema": {"fields": [{"name": "_SMART_SOURCE_BUCKET", "type": "VARCHAR(16777216)"}, {"name": "_SMART_SOURCE_FILE", "type": "VARCHAR(16777216)"}, {"name": "_SMART_SOURCE_LINENO", "type": "NUMBER(38,0)"}, {"name": "NAERK", "type": "FLOAT"}, {"name": "NAERK_TEKST", "type": "VARCHAR(16777216)"}, {"name": "NAERK_TEKST_ENGELSK", "type": "VARCHAR(16777216)"}], "_producer": "prefect", "_schemaURL": "https://example.com"}}}], "outputs": [], "producer": "https://prefect.io"}
+15:44:28.802 | INFO    | Task run 'get_some_data_from_table-0' - Finished in state Completed()
+15:44:29.017 | INFO    | Flow run 'bouncy-hound' - Created task run 'get_n2_count-0' for task 'get_n2_count'
+15:44:29.018 | INFO    | Flow run 'bouncy-hound' - Executing 'get_n2_count-0' immediately...
+15:44:30.562 | INFO    | Task run 'get_n2_count-0' - Finished in state Completed()
+{"eventType": "RUNNING", "eventTime": "2023-04-10T13:44:22.553644+00:00", "job": {"namespace": "prefect", "name": "321c07ff-8295-4a0a-b916-64dba93aae04"}, "run": {"runId": "1b1e18a8-4f4e-4737-9c70-b2dfe9e66d90"}, "inputs": [], "outputs": [{"namespace": "prefect", "name": "snowflake://xy1234.west-europe.azure/dbthouse/landing/n2koder", "facets": {"schema": {"fields": [{"name": "N2", "type": "VARCHAR(16777216)"}, {"name": "N_SUBGROUPS", "type": "NUMBER(38,0)"}], "_producer": "prefect", "_schemaURL": "https://example.com"}}}], "producer": "https://prefect.io"}
+{"eventType": "COMPLETE", "eventTime": "2023-04-10T15:44:37.091686", "job": {"namespace": "prefect", "name": "321c07ff-8295-4a0a-b916-64dba93aae04"}, "run": {"runId": "1b1e18a8-4f4e-4737-9c70-b2dfe9e66d90"}, "inputs": [], "outputs": [], "producer": "https://prefect.io"}
+15:44:37.337 | INFO    | Flow run 'bouncy-hound' - Finished in state Completed('All states completed.')
