@@ -166,12 +166,6 @@ Also, note that there are separate methods (wrappers) for writing pandas data fr
 
 Because I haven't had time to argue with `SecreetStr` yet, the password to the snowflake DB is plaintext which it *really should not be*. Sorry not sorry. This is after all just proof-of-concept.
 
-The event example above includes the flow run name, but this is only included if the block is invoked in the flow. The name does not seem to be accessible within a task. It is still possible to stitch together via the flow ID so it is probably not a big problem.
-
-More importantly, there are some issues accessing flow information, so there are two requirements for this to work:
-1. The block must be loaded from inside a flow, not inside a task
-2. In order to "freeze" (store) the necessary flow information for when it is used within tasks later, there is a method named `freeze_flow_info()` that should be run immediately. Perhaps this can be done more elegantly through some init method, but my first attempt didn't work so I let it be for now.
-
 
 ## If you want to test this
 Due to the raggedy shape of this repo, there are quite a few prerequisites.

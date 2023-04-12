@@ -28,29 +28,17 @@ class SnowflakeLineageBlock(Block):
     _block_type_name = "SnowflakeLineage"
     _block_type_slug = "snowflake-lineage"
 
-    def freeze_flow_info(self):
-        self._flow_run_name = str(prefect.context.get_run_context().flow_run.name) or prefect.context.get_run_context().flow_run.flow_id
-        self._flow_run_id = str(prefect.context.get_run_context().flow_run.id)
-        self._flow_id = prefect.context.get_run_context().flow_run.flow_id
-
     @property
     def flow_run_id(self):
-        try:
-            return self._flow_run_id  or str(prefect.context.get_run_context().flow_run.id)
-        except AttributeError as e:
-            return str(prefect.context.get_run_context().task_run.flow_run_id)
+        return prefect.runtime.flow_run.id
 
     @property
     def flow_run_name(self):
-        try:
-            return self._flow_run_name or str(prefect.context.get_run_context().flow_run.name)
-        except Exception as e:
-            return None
+        return prefect.runtime.flow_run.name
 
     @property
-    def flow_id(self):
-        return self._flow_id or prefect.context.get_run_context().flow_run.flow_id
-
+    def flow_name(self):
+        return prefect.runtime.flow_run.flow_name
 
     @property
     def default_namespace(self):

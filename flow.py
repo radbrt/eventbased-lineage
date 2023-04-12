@@ -14,7 +14,7 @@ def get_some_data_from_table(lineageblock):
 
 @task
 def get_n2_count(df):
-    
+
     df["n2"] = df["naerk"].astype(str).apply(lambda x: x[0:2])
 
     return df.groupby('n2').agg(n_subgroups=('n2', 'size')).reset_index()
@@ -23,11 +23,10 @@ def get_n2_count(df):
 @flow
 def main_flow():
     sf = SnowflakeLineageBlock.load('ax')
-    sf.freeze_flow_info()
     df = get_some_data_from_table(lineageblock=sf)
     df = get_n2_count(df)
     sf.write_df(df, "n2koder")
-    
+
     sf.complete_run()
 
 
