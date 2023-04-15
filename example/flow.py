@@ -1,13 +1,13 @@
 import prefect
 from prefect import task, flow, get_run_logger
-from snowflake_lineage_block import SnowflakeLineageBlock
+from ..blocklineage import SnowflakeLineageBlock
 import pandas as pd
 
 
 @task
 def get_some_data_from_table(lineageblock):
     query = "select * from nkoder"
-    df = pd.DataFrame(lineageblock.run_query(query))
+    df = pd.read_csv(query, con=lineageblock)
 
     return df
 
@@ -25,7 +25,7 @@ def main_flow():
     sf = SnowflakeLineageBlock.load('ax')
     df = get_some_data_from_table(lineageblock=sf)
     df = get_n2_count(df)
-    sf.write_df(df, "n2koder")
+    df.lb.to_sql("n2koder", con=sf, if_exists="replace", index=False)
 
     sf.complete_run()
 

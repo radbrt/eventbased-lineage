@@ -1,5 +1,2 @@
-adlfs
-marvin[chromadb]
 snowflake-sqlalchemy
-pymssql
 prefect

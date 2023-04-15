@@ -164,8 +164,6 @@ There are plenty of bugs in the code - parsing the table references in the SQL o
 
 Also, note that there are separate methods (wrappers) for writing pandas data frames to snowflake. The default pandas implementation simply passes an open connection to the `to_sql` method, which makes it hard to intercept. I have no clue if it is possible to improve this.
 
-Because I haven't had time to argue with `SecreetStr` yet, the password to the snowflake DB is plaintext which it *really should not be*. Sorry not sorry. This is after all just proof-of-concept.
-
 
 ## If you want to test this
 Due to the raggedy shape of this repo, there are quite a few prerequisites.

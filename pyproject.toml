@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "blocklineage"
+version = "0.1.0"
+description = "`snowflake-blocklineage` is Prefect block for interacting with snowflake while producing lineage information."
+authors = ["Henning Holgersen"]
+keywords = [
+    "orchestration",
+    "observability",
+    "snowflake"
+]
+license = "Apache 2.0"
+
+[tool.poetry.dependencies]
+python = "<3.12,>=3.8.1"
+requests = "^2.25.0"
+snowflake-sqlalchemy = "^1.4.0"
+snowflake-connector-python = "^3.0.0"
+prefect = ">2.8.0"
+pandas = "^1.5.0"
+pydantic = "^1.10.0"
+sqlparse = "^0.4.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+tox = "^3.24.4"
+flake8 = "^3.9.2"
+black = "^22.9"
+pydocstyle = "^6.1.1"
+mypy = "^0.910"
+types-requests = "^2.26.1"
+isort = "^5.10.1"
+
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3 # Vertical Hanging Indent
+src_paths = "blocklineage"
+
+[build-system]
+requires = ["poetry-core>=1.0.8"]
+build-backend = "poetry.core.masonry.api"
+
