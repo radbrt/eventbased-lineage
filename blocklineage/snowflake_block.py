@@ -52,7 +52,7 @@ class SnowflakeLineageBlock(Block):
 
     @property
     def connection(self):
-        return create_engine(self.connection_string)
+        return create_engine(self.connection_string).connect()
 
     @property
     def connection_string(self):
