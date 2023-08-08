@@ -100,7 +100,7 @@ class SnowflakeLineageBlock(Block):
         return response
 
 
-    def _emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Dict | None):
+    def _emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Optional[Dict]):
 
         io_record = {
             "namespace": "prefect",
