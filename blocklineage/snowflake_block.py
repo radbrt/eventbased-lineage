@@ -14,7 +14,7 @@ from snowflake.sqlalchemy import URL
 from sqlalchemy import create_engine
 from sqlparse.sql import Identifier, IdentifierList
 from sqlparse.tokens import DML, Keyword
-
+from prefect.events import emit_event
 
 class SnowflakeLineageBlock(Block):
     """Contains a connection to Snowflake and the functions to get lineage"""
@@ -34,25 +34,31 @@ class SnowflakeLineageBlock(Block):
     _block_type_name = "SnowflakeLineage"
     _block_type_slug = "snowflake-lineage"
 
+
     @property
     def flow_run_id(self):
         return prefect.runtime.flow_run.id
+
 
     @property
     def flow_run_name(self):
         return prefect.runtime.flow_run.name
 
+
     @property
     def flow_name(self):
-        return prefect.runtime.flow_run.flow_name
+        return "prefect.flow-run." + prefect.runtime.flow_run.flow_name
+
 
     @property
     def default_namespace(self):
         return f"snowflake://{self.account}/{self.database}/{self.db_schema}"
 
+
     @property
     def connection(self):
         return create_engine(self.connection_string).connect()
+
 
     @property
     def connection_string(self):
@@ -66,161 +72,6 @@ class SnowflakeLineageBlock(Block):
             role=self.role,
         )
 
-    def _execute(self, cursor: SnowflakeCursor, inputs: Dict[str, Any]):
-        """Helper method to execute operations asynchronously."""
-        response = cursor.execute(**inputs)
-        self.logger.info(f"Executing the operation, {inputs['command']!r}; ")
-
-        return response
-
-    def _extract_tables(self, parsed):
-        tables = []
-        from_seen = False
-        for item in parsed.tokens:
-            if from_seen:
-                if isinstance(item, IdentifierList):
-                    for identifier in item.get_identifiers():
-                        tables.append(str(identifier.get_real_name()))
-                elif isinstance(item, Identifier):
-                    tables.append(str(item.get_real_name()))
-                    from_seen = False
-            elif item.ttype is Keyword and (item.value.upper() in ("FROM", "JOIN")):
-                from_seen = True
-        return tables
-
-    def _list_tables_selected_in_query(self, sql_query):
-        parsed = sqlparse.parse(sql_query)
-        for statement in parsed:
-            if statement.get_type() == "SELECT":
-                tables = self._extract_tables(statement)
-                return tables
-        return []
-
-    def _extract_created_or_inserted_tables(self, parsed):
-        tables = []
-        for item in parsed.tokens:
-            if item.ttype is Keyword and item.value.upper() in ("INTO", "TABLE"):
-                # The next token after INTO or TABLE should be the table name
-                next_item = parsed.token_next(parsed.token_index(item))[1]
-                if isinstance(next_item, Identifier):
-                    tables.append(str(next_item.get_real_name()))
-        return tables
-
-    def _find_created_or_inserted_tables(self, sql_query):
-        parsed = sqlparse.parse(sql_query)
-        tables = []
-        for statement in parsed:
-            if statement.get_type() in ("CREATE", "INSERT"):
-                tables.extend(self._extract_created_or_inserted_tables(statement))
-        return tables
-
-    def _start_connection(self):
-        """
-        Starts Snowflake database connection.
-        """
-        self.get_connection()
-        if self._unique_cursors is None:
-            self._unique_cursors = {}
-
-    def get_connection(self, **connect_kwargs: Dict[str, Any]) -> SnowflakeConnection:
-        """
-        Returns a Snowflake connection object.
-        """
-        if self._connection is not None:
-            return self._connection
-
-        connect_params = {
-            "database": self.database,
-            "warehouse": self.warehouse,
-            "schema": self.schema_,
-        }
-        connection = self.credentials.get_client(**connect_kwargs, **connect_params)
-        self._connection = connection
-        self.logger.info("Started a new connection to Snowflake.")
-        return connection
-
-    def fetch_one(
-        self,
-        operation: str,
-        parameters: Optional[Dict[str, Any]] = None,
-        cursor_type: Type[SnowflakeCursor] = SnowflakeCursor,
-        **execute_kwargs: Dict[str, Any],
-    ) -> Tuple[Any]:
-
-        inputs = dict(
-            command=operation,
-            params=parameters,
-            **execute_kwargs,
-        )
-
-        new, cursor = self._get_cursor(inputs, cursor_type=cursor_type)
-        if new:
-            self._execute(cursor, inputs)
-        self.logger.debug("Preparing to fetch a row.")
-        result = cursor.fetchone()
-        return result
-
-    def fetch_many(
-        self,
-        operation: str,
-        parameters: Optional[Dict[str, Any]] = None,
-        size: Optional[int] = None,
-        cursor_type: Type[SnowflakeCursor] = SnowflakeCursor,
-        **execute_kwargs: Dict[str, Any],
-    ) -> List[Tuple[Any]]:
-
-        inputs = dict(
-            command=operation,
-            params=parameters,
-            **execute_kwargs,
-        )
-
-        new, cursor = self._get_cursor(inputs, cursor_type=cursor_type)
-        if new:
-            self._execute(cursor, inputs)
-        self.logger.debug("Preparing to fetch many row.")
-        result = cursor.fetchmany(size=size)
-        return result
-
-    def fetch_all(
-        self,
-        operation: str,
-        parameters: Optional[Dict[str, Any]] = None,
-        cursor_type: Type[SnowflakeCursor] = SnowflakeCursor,
-        **execute_kwargs: Dict[str, Any],
-    ) -> List[Tuple[Any]]:
-
-        inputs = dict(
-            command=operation,
-            params=parameters,
-            **execute_kwargs,
-        )
-
-        new, cursor = self._get_cursor(inputs, cursor_type=cursor_type)
-        if new:
-            self._execute(cursor, inputs)
-        self.logger.debug("Preparing to fetch many row.")
-        result = cursor.fetchall()
-        return result
-
-    def execute(
-        self,
-        operation: str,
-        parameters: Optional[Dict[str, Any]] = None,
-        cursor_type: Type[SnowflakeCursor] = SnowflakeCursor,
-        **execute_kwargs: Dict[str, Any],
-    ) -> None:
-
-        self._start_connection()
-
-        inputs = dict(
-            command=operation,
-            params=parameters,
-            **execute_kwargs,
-        )
-        with self._connection.cursor(cursor_type) as cursor:
-            cursor.execute(**inputs)
-        self.logger.info(f"Executed the operation, {operation!r}.")
 
     @staticmethod
     def _decode_secret(secret: Union[SecretStr, SecretBytes]) -> Optional[bytes]:
@@ -240,8 +91,142 @@ class SnowflakeLineageBlock(Block):
 
         return secret if isinstance(secret, bytes) else secret.encode()
 
+
+    def _execute(self, cursor: SnowflakeCursor, inputs: Dict[str, Any]):
+        """Helper method to execute operations asynchronously."""
+        response = cursor.execute(**inputs)
+        self.logger.info(f"Executing the operation, {inputs['command']}; ")
+
+        return response
+
+
+    def _emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Dict | None):
+
+        io_record = {
+            "namespace": "prefect",
+            "name": uri
+        }
+
+        if schema_fields:
+            io_record["facets"] = {
+                    "schema": {
+                        "fields": schema_fields,
+                        "_producer": "prefect",
+                        "_schemaURL": "https://example.com",
+                    }
+            }
+
+        emitted = emit_event(
+            event=f"lineage.{operation}",
+            occurred=datetime.datetime.utcnow(),
+            resource={
+                "lineage.resource.uri": uri
+            },
+            payload=io_record
+        )
+
+        return emitted
+
+
+    def _extract_tables(self, parsed):
+        tables = []
+        from_seen = False
+        for item in parsed.tokens:
+            if from_seen:
+                if isinstance(item, IdentifierList):
+                    for identifier in item.get_identifiers():
+                        tables.append(str(identifier.get_real_name()))
+                elif isinstance(item, Identifier):
+                    tables.append(str(item.get_real_name()))
+                    from_seen = False
+            elif item.ttype is Keyword and (item.value.upper() in ("FROM", "JOIN")):
+                from_seen = True
+        return tables
+
+
+    def _list_tables_selected_in_query(self, sql_query):
+        parsed = sqlparse.parse(sql_query)
+        for statement in parsed:
+            if statement.get_type() == "SELECT":
+                tables = self._extract_tables(statement)
+                return tables
+        return []
+
+
+    def _extract_created_or_inserted_tables(self, parsed):
+        tables = []
+        for item in parsed.tokens:
+            if item.ttype is Keyword and item.value.upper() in ("INTO", "TABLE"):
+                # The next token after INTO or TABLE should be the table name
+                next_item = parsed.token_next(parsed.token_index(item))[1]
+                if isinstance(next_item, Identifier):
+                    tables.append(str(next_item.get_real_name()))
+        return tables
+
+
+    def _find_created_or_inserted_tables(self, sql_query):
+        parsed = sqlparse.parse(sql_query)
+        tables = []
+        for statement in parsed:
+            if statement.get_type() in ("CREATE", "INSERT"):
+                tables.extend(self._extract_created_or_inserted_tables(statement))
+        return tables
+
+
+    def _start_connection(self):
+        """
+        Starts Snowflake database connection.
+        """
+        self._get_connection()
+        if self._unique_cursors is None:
+            self._unique_cursors = {}
+
+
+    def _get_connection(self, **connect_kwargs: Dict[str, Any]) -> SnowflakeConnection:
+        """
+        Returns a Snowflake connection object.
+        """
+        if self._connection is not None:
+            return self._connection
+
+        connect_params = {
+            "database": self.database,
+            "warehouse": self.warehouse,
+            "schema": self.db_schema,
+        }
+        connection = self.credentials.get_client(**connect_kwargs, **connect_params)
+        self._connection = connection
+        self.logger.info("Started a new connection to Snowflake.")
+        return connection
+
+
+    def execute(
+        self,
+        operation: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        cursor_type: Type[SnowflakeCursor] = SnowflakeCursor,
+        **execute_kwargs: Dict[str, Any],
+    ) -> None:
+
+        self._start_connection()
+
+        inputs = dict(
+            command=operation,
+            params=parameters,
+            **execute_kwargs,
+        )
+        with self._connection.cursor(cursor_type) as cursor:
+            r = cursor.execute(**inputs)
+            self.logger.info(f"Executed the operation, {operation}.")
+
+        return r
+    
+
+
     def make_lineage_event_from_table(self, table, add_to="inputs"):
         """Return a dictionary of the lineage event for the query"""
+
+        uri = f"{self.default_namespace}/{table}"
 
         marquez_event = {
             "eventType": "RUNNING",
@@ -256,7 +241,7 @@ class SnowflakeLineageBlock(Block):
         schema_fields = self._get_table_schema(table)
         io_record = {
             "namespace": "prefect",
-            "name": f"{self.default_namespace}/{table}",
+            "name": uri,
             "facets": {
                 "schema": {
                     "fields": schema_fields,
@@ -368,6 +353,11 @@ class SnowflakeLineageBlock(Block):
 
         if not r.ok:
             raise Exception(f"Error posting to OpenLineage: {r.status_code}, {r.text}")
+
+
+    def make_event(self, data):
+        sendable_data = json.loads(json.dumps(data, ensure_ascii=True, default=str))
+
 
     def complete_run(self):
         """Mark the run as complete"""
