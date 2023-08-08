@@ -312,10 +312,10 @@ class SnowflakeLineageBlock(Block):
 
     def _parse_full_table_name(
         self, full_table_name: str
-    ) -> tuple[str | None, str | None, str]:
+    ):
         """Parse a fully qualified table name into its parts."""
-        db_name: str | None = None
-        schema_name: str | None = None
+        db_name = None
+        schema_name = None
 
         parts = full_table_name.split(".")
         if len(parts) == 1:
