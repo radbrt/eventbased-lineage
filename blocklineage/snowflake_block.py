@@ -222,7 +222,6 @@ class SnowflakeLineageBlock(Block):
         return r
     
 
-
     def make_lineage_event_from_table(self, table, add_to="inputs"):
         """Return a dictionary of the lineage event for the query"""
 
@@ -253,6 +252,7 @@ class SnowflakeLineageBlock(Block):
         marquez_event[add_to].append(io_record)
 
         return marquez_event
+
 
     def make_lineage_event_from_query(self, query):
         """Return a dictionary of the lineage event for the query"""
@@ -309,6 +309,7 @@ class SnowflakeLineageBlock(Block):
 
         return marquez_event
 
+
     def _parse_full_table_name(
         self, full_table_name: str
     ) -> tuple[str | None, str | None, str]:
@@ -326,6 +327,7 @@ class SnowflakeLineageBlock(Block):
 
         return db_name, schema_name, table_name
 
+
     def _get_full_tablereference(self, extracted_reference: str) -> str:
         """Return the full table reference for the extracted reference"""
         db_name, schema_name, table_name = self._parse_full_table_name(
@@ -337,6 +339,7 @@ class SnowflakeLineageBlock(Block):
             schema_name = self.db_schema
 
         return f"{db_name}.{schema_name}.{table_name}"
+
 
     def _get_table_schema(self, table_name: str) -> dict[str, str]:
         """Return the schema for the table"""
@@ -371,6 +374,6 @@ class SnowflakeLineageBlock(Block):
             "producer": "https://prefect.io",
         }
 
-        print(json.dumps(marquez_event, ensure_ascii=True, default=str))
+        # print(json.dumps(marquez_event, ensure_ascii=True, default=str))
         if self.marquez_endpoint:
             self.post_to_marquez(marquez_event)
