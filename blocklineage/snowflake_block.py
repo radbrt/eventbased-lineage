@@ -37,17 +37,20 @@ class SnowflakeLineageBlock(Block):
 
     @property
     def flow_run_id(self):
-        return prefect.runtime.flow_run.id
+        return "run123"
+        # return prefect.runtime.flow_run.id
 
 
     @property
     def flow_run_name(self):
-        return prefect.runtime.flow_run.name
+        return "flowexample"
+        # return prefect.runtime.flow_run.name
 
 
     @property
     def flow_name(self):
-        return "prefect.flow-run." + prefect.runtime.flow_run.flow_name
+        return "prefect.flow-run.yabidabi-gerbil"
+        # return "prefect.flow-run." + prefect.runtime.flow_run.flow_name
 
 
     @property
@@ -95,7 +98,7 @@ class SnowflakeLineageBlock(Block):
     def _execute(self, cursor: SnowflakeCursor, inputs: Dict[str, Any]):
         """Helper method to execute operations asynchronously."""
         response = cursor.execute(**inputs)
-        self.logger.info(f"Executing the operation, {inputs['command']}; ")
+        # self.logger.info(f"Executing the operation, {inputs['command']}; ")
 
         return response
 
@@ -116,16 +119,17 @@ class SnowflakeLineageBlock(Block):
                     }
             }
 
-        emitted = emit_event(
+        emit_event(
             event=f"lineage.{operation}",
             occurred=datetime.datetime.utcnow(),
             resource={
-                "lineage.resource.uri": uri
+                "lineage.resource.uri": uri,
+                "prefect.resource.id": "abd12345"
             },
             payload=io_record
         )
 
-        return emitted
+        return None
 
 
     def _extract_tables(self, parsed):
@@ -186,8 +190,8 @@ class SnowflakeLineageBlock(Block):
         """
         Returns a Snowflake connection object.
         """
-        if self._connection is not None:
-            return self._connection
+        if self.connection is not None:
+            return self.connection
 
         connect_params = {
             "database": self.database,
@@ -195,8 +199,8 @@ class SnowflakeLineageBlock(Block):
             "schema": self.db_schema,
         }
         connection = self.credentials.get_client(**connect_kwargs, **connect_params)
-        self._connection = connection
-        self.logger.info("Started a new connection to Snowflake.")
+        self.connection = connection
+        # self.logger.info("Started a new connection to Snowflake.")
         return connection
 
 
@@ -208,16 +212,26 @@ class SnowflakeLineageBlock(Block):
         **execute_kwargs: Dict[str, Any],
     ) -> None:
 
-        self._start_connection()
+        # self._start_connection()
 
-        inputs = dict(
-            command=operation,
-            params=parameters,
-            **execute_kwargs,
-        )
-        with self._connection.cursor(cursor_type) as cursor:
-            r = cursor.execute(**inputs)
-            self.logger.info(f"Executed the operation, {operation}.")
+        # inputs = dict(
+        #     command=operation,
+        #     params=parameters,
+        #     **execute_kwargs,
+        # )
+        
+        
+        tbls = self._find_created_or_inserted_tables(operation)
+        r = self.connection.execute(operation)
+
+        for t in tbls:
+            uri = f"{self.default_namespace}/{t}"
+            self._emit_lineage_to_prefect(uri, "create", None)
+            
+        # with self.connection.cursor(cursor_type) as cursor:
+        #     r = cursor.execute(**inputs)
+            
+        # self.logger.info(f"Executed the operation, {operation}.")
 
         return r
     
