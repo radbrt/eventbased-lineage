@@ -26,6 +26,7 @@ class SnowflakeLineageBlock(Block):
     password: SecretStr
     warehouse: str
     role: str
+    _connection: Optional[SnowflakeConnection] = None
     backend: Optional[str] = "marquez"
     marquez_endpoint: Optional[str] = None
     marquez_api_token: Optional[SecretStr] = None
@@ -58,9 +59,18 @@ class SnowflakeLineageBlock(Block):
         return f"snowflake://{self.account}/{self.database}/{self.db_schema}"
 
 
+    def connect(self):
+        return create_engine(self.connection_string).connect()
+
+
     @property
     def connection(self):
-        return create_engine(self.connection_string).connect()
+        """Return a connection to Snowflake."""
+        if self._connection:
+            return self._connection
+        else:
+            self._connection = self.connect()
+            return self._connection
 
 
     @property
@@ -103,7 +113,7 @@ class SnowflakeLineageBlock(Block):
         return response
 
 
-    def _emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Optional[Dict]):
+    def emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Optional[Dict]):
 
         io_record = {
             "namespace": "prefect",
@@ -226,7 +236,7 @@ class SnowflakeLineageBlock(Block):
 
         for t in tbls:
             uri = f"{self.default_namespace}/{t}"
-            self._emit_lineage_to_prefect(uri, "create", None)
+            self.emit_lineage_to_prefect(uri, "create", None)
             
         # with self.connection.cursor(cursor_type) as cursor:
         #     r = cursor.execute(**inputs)

@@ -28,14 +28,19 @@ class PandasLineageHelper:
         return pd.read_sql(sql, **kwargs)
 
     def to_sql(self, sql, **kwargs):
+        """Write records stored in a DataFrame to a SQL database."""
+
         block = kwargs.pop("con")
         con = block.connection
-        kwargs["con"] = con
 
-        lineage_event = block.make_lineage_event_from_table(sql, "output")
+        # kwargs["con"] = con
+        uri = f"{block.default_namespace}/{sql}"
+        block.emit_lineage_to_prefect(uri, "create", None)
+        
+        # lineage_event = block.make_lineage_event_from_table(uri, "create")
 
-        print(json.dumps(lineage_event, ensure_ascii=True, default=str))
-        if block.marquez_endpoint:
-            block.post_to_marquez(lineage_event)
+        # print(json.dumps(lineage_event, ensure_ascii=True, default=str))
+        # if block.marquez_endpoint:
+        #     block.post_to_marquez(lineage_event)
 
-        return self.df.to_sql(sql, **kwargs)
+        return self.df.to_sql(sql, con=con, **kwargs)
