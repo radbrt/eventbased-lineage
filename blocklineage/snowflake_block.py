@@ -3,6 +3,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import pandas as pd
+from pandas.io.sql import has_table
 import prefect
 import requests
 import sqlparse
@@ -140,6 +141,18 @@ class SnowflakeLineageBlock(Block):
         )
 
         return None
+
+    def read_sql(self, sql, **kwargs):
+
+        if has_table(sql, self.connection):
+            lineage_event = self.make_lineage_event_from_table(sql, "input")
+        else:
+            lineage_event = self.make_lineage_event_from_query(sql)
+
+        if self.marquez_endpoint:
+            self.post_to_marquez(lineage_event)
+
+        return pd.read_sql(sql, con=self.connection, **kwargs)
 
 
     def _extract_tables(self, parsed):
