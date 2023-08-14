@@ -307,7 +307,7 @@ class SnowflakeLineageBlock(Block):
         marquez_event = {
             "eventType": "RUNNING",
             "eventTime": prefect.context.get_run_context().start_time,
-            "job": {"namespace": "prefect", "name": self.flow_id},
+            "job": {"namespace": "prefect", "name": self.flow_run_id},
             "run": {"runId": self.flow_run_id},
             "inputs": [],
             "outputs": [],
