@@ -411,6 +411,5 @@ class SnowflakeLineageBlock(Block):
             "producer": "https://prefect.io",
         }
 
-        # print(json.dumps(marquez_event, ensure_ascii=True, default=str))
         if self.marquez_endpoint:
             self.post_to_marquez(marquez_event)

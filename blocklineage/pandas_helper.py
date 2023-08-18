@@ -21,7 +21,6 @@ class PandasLineageHelper:
         else:
             lineage_event = block.make_lineage_event_from_sql(sql)
 
-        print(json.dumps(lineage_event, ensure_ascii=True, default=str))
         if block.marquez_endpoint:
             block.post_to_marquez(lineage_event)
 
@@ -39,7 +38,6 @@ class PandasLineageHelper:
         
         # lineage_event = block.make_lineage_event_from_table(uri, "create")
 
-        # print(json.dumps(lineage_event, ensure_ascii=True, default=str))
         # if block.marquez_endpoint:
         #     block.post_to_marquez(lineage_event)
 
