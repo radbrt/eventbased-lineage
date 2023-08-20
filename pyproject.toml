@@ -19,6 +19,7 @@ prefect = ">2.8.0"
 pandas = "^1.5.0"
 pydantic = "^1.10.0"
 sqlparse = "^0.4.3"
+sqlglot = "^17.14.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"
