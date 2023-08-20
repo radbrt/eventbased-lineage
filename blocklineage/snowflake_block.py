@@ -16,8 +16,11 @@ from sqlalchemy import create_engine
 from sqlparse.sql import Identifier, IdentifierList
 from sqlparse.tokens import DML, Keyword
 from prefect.events import emit_event
+from blocklineage.core import LineageBlock
+from blocklineage import DataOperations
+from sqlglot import parse_one, exp
 
-class SnowflakeLineageBlock(Block):
+class SnowflakeLineageBlock(LineageBlock):
     """Contains a connection to Snowflake and the functions to get lineage"""
 
     account: str
@@ -28,31 +31,8 @@ class SnowflakeLineageBlock(Block):
     warehouse: str
     role: str
     _connection: Optional[SnowflakeConnection] = None
-    backend: Optional[str] = "marquez"
-    marquez_endpoint: Optional[str] = None
-    marquez_api_token: Optional[SecretStr] = None
-    marquez_namespace: Optional[str] = None
-
     _block_type_name = "SnowflakeLineage"
     _block_type_slug = "snowflake-lineage"
-
-
-    @property
-    def flow_run_id(self):
-        return "run123"
-        # return prefect.runtime.flow_run.id
-
-
-    @property
-    def flow_run_name(self):
-        return "flowexample"
-        # return prefect.runtime.flow_run.name
-
-
-    @property
-    def flow_name(self):
-        return "prefect.flow-run.yabidabi-gerbil"
-        # return "prefect.flow-run." + prefect.runtime.flow_run.flow_name
 
 
     @property
@@ -87,70 +67,12 @@ class SnowflakeLineageBlock(Block):
         )
 
 
-    @staticmethod
-    def _decode_secret(secret: Union[SecretStr, SecretBytes]) -> Optional[bytes]:
-        """
-        Decode the provided secret into bytes. If the secret is not a
-        string or bytes, or it is whitespace, then return None.
-        Args:
-            secret: The value to decode.
-        Returns:
-            The decoded secret as bytes.
-        """
-        if isinstance(secret, (SecretBytes, SecretStr)):
-            secret = secret.get_secret_value()
-
-        if not isinstance(secret, (bytes, str)) or len(secret) == 0 or secret.isspace():
-            return None
-
-        return secret if isinstance(secret, bytes) else secret.encode()
-
-
-    def _execute(self, cursor: SnowflakeCursor, inputs: Dict[str, Any]):
-        """Helper method to execute operations asynchronously."""
-        response = cursor.execute(**inputs)
-        # self.logger.info(f"Executing the operation, {inputs['command']}; ")
-
-        return response
-
-
-    def emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Optional[Dict]):
-
-        io_record = {
-            "namespace": "prefect",
-            "name": uri
-        }
-
-        if schema_fields:
-            io_record["facets"] = {
-                    "schema": {
-                        "fields": schema_fields,
-                        "_producer": "prefect",
-                        "_schemaURL": "https://example.com",
-                    }
-            }
-
-        emit_event(
-            event=f"lineage.{operation}",
-            occurred=datetime.datetime.utcnow(),
-            resource={
-                "lineage.resource.uri": uri,
-                "prefect.resource.id": "abd12345"
-            },
-            payload=io_record
-        )
-
-        return None
-
     def read_sql(self, sql, **kwargs):
 
         if has_table(sql, self.connection):
-            lineage_event = self.make_lineage_event_from_table(sql, "input")
+            lineage_event = self.make_lineage_payload_from_table(sql, "input")
         else:
-            lineage_event = self.make_lineage_event_from_query(sql)
-
-        if self.marquez_endpoint:
-            self.post_to_marquez(lineage_event)
+            lineage_event = self.make_lineage_payload_from_query(sql)
 
         return pd.read_sql(sql, con=self.connection, **kwargs)
 
@@ -172,32 +94,22 @@ class SnowflakeLineageBlock(Block):
 
 
     def _list_tables_selected_in_query(self, sql_query):
-        parsed = sqlparse.parse(sql_query)
-        for statement in parsed:
-            if statement.get_type() == "SELECT":
-                tables = self._extract_tables(statement)
-                return tables
-        return []
+        parsed = parse_one(sql_query)
+        for e in parsed.find_all(exp.Select):
+            for tbl in e.find_all(exp.Table):
+                yield f"{tbl.catalog or self.db}.{tbl.db or self.schema}.{tbl.name}"
 
 
-    def _extract_created_or_inserted_tables(self, parsed):
-        tables = []
-        for item in parsed.tokens:
-            if item.ttype is Keyword and item.value.upper() in ("INTO", "TABLE"):
-                # The next token after INTO or TABLE should be the table name
-                next_item = parsed.token_next(parsed.token_index(item))[1]
-                if isinstance(next_item, Identifier):
-                    tables.append(str(next_item.get_real_name()))
-        return tables
+    def _list_tables_created_in_query(self, sql_query):
+        parsed = parse_one(sql_query)
+        for tbl in parsed.find_all(exp.Create):
+            yield f"{tbl.this.catalog or self.this.db}.{tbl.db or self.schema}.{tbl.name}"
 
+    def _list_tables_inserted_in_query(self, sql_query):
+        parsed = parse_one(sql_query)
+        for tbl in parsed.find_all(exp.Insert):
+            yield f"{tbl.this.catalog or self.this.db}.{tbl.db or self.schema}.{tbl.name}"
 
-    def _find_created_or_inserted_tables(self, sql_query):
-        parsed = sqlparse.parse(sql_query)
-        tables = []
-        for statement in parsed:
-            if statement.get_type() in ("CREATE", "INSERT"):
-                tables.extend(self._extract_created_or_inserted_tables(statement))
-        return tables
 
 
     def _start_connection(self):
@@ -235,14 +147,6 @@ class SnowflakeLineageBlock(Block):
         **execute_kwargs: Dict[str, Any],
     ) -> None:
 
-        # self._start_connection()
-
-        # inputs = dict(
-        #     command=operation,
-        #     params=parameters,
-        #     **execute_kwargs,
-        # )
-        
         
         tbls = self._find_created_or_inserted_tables(operation)
         r = self.connection.execute(operation)
@@ -250,21 +154,17 @@ class SnowflakeLineageBlock(Block):
         for t in tbls:
             uri = f"{self.default_namespace}/{t}"
             self.emit_lineage_to_prefect(uri, "create", None)
-            
-        # with self.connection.cursor(cursor_type) as cursor:
-        #     r = cursor.execute(**inputs)
-            
-        # self.logger.info(f"Executed the operation, {operation}.")
+
 
         return r
     
 
-    def make_lineage_event_from_table(self, table, add_to="inputs"):
+    def make_lineage_payload_from_table(self, table, add_to="inputs"):
         """Return a dictionary of the lineage event for the query"""
 
         uri = f"{self.default_namespace}/{table}"
 
-        marquez_event = {
+        openlineage_event = {
             "eventType": "RUNNING",
             "eventTime": prefect.context.get_run_context().start_time,
             "job": {"namespace": "prefect", "name": self.flow_id},
@@ -286,35 +186,25 @@ class SnowflakeLineageBlock(Block):
                 }
             },
         }
-        marquez_event[add_to].append(io_record)
+        openlineage_event[add_to].append(io_record)
 
-        return marquez_event
+        return openlineage_event
 
 
-    def make_lineage_event_from_query(self, query):
+    def make_lineage_payload_from_query(self, query):
         """Return a dictionary of the lineage event for the query"""
 
         tables_queried = self._list_tables_selected_in_query(query)
-        tables_created = self._find_created_or_inserted_tables(query)
+        tables_created = self._list_tables_created_in_query(query)
+        tables_inserted = self._list_tables_inserted_in_query(query)
 
-        full_queried_table_references = [
-            self._get_full_tablereference(table) for table in tables_queried
-        ]
-        full_created_table_references = [
-            self._get_full_tablereference(table) for table in tables_created
-        ]
 
-        marquez_event = {
-            "eventType": "RUNNING",
-            "eventTime": prefect.context.get_run_context().start_time,
-            "job": {"namespace": "prefect", "name": self.flow_run_id},
-            "run": {"runId": self.flow_run_id},
+        openlineage_io = {
             "inputs": [],
-            "outputs": [],
-            "producer": "https://prefect.io",
+            "outputs": []
         }
 
-        for table in tables_created:
+        for table in tables_created + tables_inserted:
             schema_fields = self._get_table_schema(table)
             output_record = {
                 "namespace": "prefect",
@@ -327,7 +217,7 @@ class SnowflakeLineageBlock(Block):
                     }
                 },
             }
-            marquez_event["outputs"].append(output_record)
+            openlineage_io["outputs"].append(output_record)
 
         for table in tables_queried:
             schema_fields = self._get_table_schema(table)
