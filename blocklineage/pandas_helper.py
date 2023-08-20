@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from pandas.io.sql import has_table
 from sqlalchemy import create_engine
+from blocklineage.utils import DataOperations
 
 
 @pd.api.extensions.register_dataframe_accessor("lb")
@@ -26,19 +27,32 @@ class PandasLineageHelper:
 
         return pd.read_sql(sql, **kwargs)
 
+    def get_schema(self):
+        schema = []
+        for col in self.df.columns:
+            schema.append({"name": col, "type": str(self.df[col].dtype)})
+
+        return schema
+        
+
     def to_sql(self, sql, **kwargs):
         """Write records stored in a DataFrame to a SQL database."""
 
         block = kwargs.pop("con")
         con = block.connection
+        full_table_ref = block.get_full_tablereference(sql)
+
+        operation_type = kwargs.get("if_exists", "fail")
+        if operation_type == "replace":
+            event_operation = DataOperations.CREATE
+        elif operation_type == "append":
+            event_operation = DataOperations.WRITE
+        else:
+            event_operation = DataOperations.CREATE
 
         # kwargs["con"] = con
-        uri = f"{block.default_namespace}/{sql}"
-        block.emit_lineage_to_prefect(uri, "create", None)
+        uri = f"{block.default_namespace}/{full_table_ref}"
+        block.emit_lineage_to_prefect(uri, event_operation, self.get_schema())
         
-        # lineage_event = block.make_lineage_event_from_table(uri, "create")
 
-        # if block.marquez_endpoint:
-        #     block.post_to_marquez(lineage_event)
-
-        return self.df.to_sql(sql, con=con, **kwargs)
+        return self.df.to_sql(sql, con=con, **kwargs, index=False)

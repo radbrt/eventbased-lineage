@@ -15,36 +15,25 @@ from sqlalchemy import create_engine
 from sqlparse.sql import Identifier, IdentifierList
 from sqlparse.tokens import DML, Keyword
 from prefect.events import emit_event
+from blocklineage.utils import DataOperations
 
 
 class LineageBlock(Block):
     """Generic class for Lineage blocks containing common functionality"""
 
-    backend: Optional[str] = "marquez"
-    marquez_endpoint: Optional[str] = None
-    marquez_api_token: Optional[SecretStr] = None
-    marquez_namespace: Optional[str] = None
 
     _block_type_name = "GenericLineage"
     _block_type_slug = "generic-lineage"
 
 
-    def __init__(self,
-            backend,
-            marquez_endpoint,
-            marquez_api_token,
-            marquez_namespace
-        ):
-
-        super.__init__()
-        self.backend = backend
-        self.marquez_endpoint = marquez_endpoint
-        self.marquez_api_token = marquez_api_token
-        self.marquez_namespace = marquez_namespace
-
     @property
     def default_schema_uri(self):
         return "http://localhost"
+
+
+    @property
+    def prefect_resource_id(self):
+        return "lineage"
 
     @property
     def flow_run_id(self):
@@ -81,7 +70,7 @@ class LineageBlock(Block):
 
 
 
-    def emit_lineage_to_prefect(self, uri: str, operation: str, schema_fields: Optional[Dict], schema_url: Optional[str] = None):
+    def emit_lineage_to_prefect(self, uri: str, operation: DataOperations, schema_fields: Optional[Dict], schema_url: Optional[str] = None):
 
         io_record = {
             "namespace": "prefect",
@@ -98,31 +87,14 @@ class LineageBlock(Block):
             }
 
         emit_event(
-            event=f"lineage.{operation}",
+            event=f"lineage.{operation.value}",
             occurred=datetime.datetime.utcnow(),
             resource={
                 "lineage.resource.uri": uri,
-                "prefect.resource.id": "abd12345"
+                "prefect.resource.id": self.prefect_resource_id
             },
             payload=io_record
         )
 
         return None
 
-
-
-    def mark_completed_run(self):
-        """Mark the run as complete"""
-        marquez_event = {
-            "eventType": "COMPLETE",
-            "eventTime": datetime.datetime.now().isoformat(),
-            "job": {"namespace": "prefect", "name": self.flow_name},
-            "run": {"runId": self.flow_run_id},
-            "inputs": [],
-            "outputs": [],
-            "producer": "https://prefect.io",
-        }
-
-        # print(json.dumps(marquez_event, ensure_ascii=True, default=str))
-        if self.marquez_endpoint:
-            self.post_to_marquez(marquez_event)
